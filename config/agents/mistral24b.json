@@ -1,14 +1,14 @@
 {
-  "agent_id": "developer_agent",
-  "name": "Core C++ Developer",
+  "agent_id": "mistral24b_agent",
+  "name": "Mistral 24B (heavy)",
   "backend_target": "llama_cpp_binary",
   "max_context_tokens": 8192,
   "temperature": 0.2,
   "max_tokens": 1024,
   "llama_server_path": "/Users/Shared/llama/llama-server",
-  "model_path": "/Users/Shared/llama/models/GGUF/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
-  "port": 8090,
+  "model_path": "/Users/Shared/llama/models/GGUF/Mistral-Small-3.1-24B-Instruct-2503-Q4_K_M.gguf",
+  "port": 8091,
   "n_gpu_layers": 99,
   "ubatch_size": 512,
-  "startup_timeout_s": 30.0
+  "startup_timeout_s": 90.0
 }

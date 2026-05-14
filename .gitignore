@@ -24,6 +24,9 @@ htmlcov/
 .idea/
 .DS_Store
 
+# Runtime state from scripts/matrix-2-launch.sh
+.matrix/
+
 # Models & weights — never commit
 *.gguf
 *.safetensors
