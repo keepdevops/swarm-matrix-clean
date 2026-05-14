@@ -54,7 +54,7 @@ class LlamaCppServerBackend(InferenceBackend):
             str(cfg.port),
             "--ctx-size",
             str(cfg.max_context_tokens),
-            "--ngl",
+            "--gpu-layers",
             str(cfg.n_gpu_layers),
             "--ubatch-size",
             str(cfg.ubatch_size),
