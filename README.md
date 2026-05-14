@@ -204,6 +204,10 @@ matrix-safe/
 └── .github/workflows/ci.yml
 ```
 
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE). Copyright 2026 keepdevops.
+
 ## Design constraints
 
 These are non-negotiable across every backend:
