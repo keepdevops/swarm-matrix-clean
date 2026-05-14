@@ -204,6 +204,11 @@ matrix-safe/
 └── .github/workflows/ci.yml
 ```
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the CI gates your PR has
+to clear, and the checklist for adding a new backend.
+
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE). Copyright 2026 keepdevops.
