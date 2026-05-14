@@ -1,0 +1,9 @@
+{
+  "agent_id": "refactor_agent",
+  "name": "Single-Stream EXL2 Refactor",
+  "backend_target": "exllamav2",
+  "max_context_tokens": 16384,
+  "temperature": 0.2,
+  "max_tokens": 2048,
+  "model_path": "/Users/Shared/models/exl2/Qwen2.5-Coder-14B-Instruct-exl2-5.0bpw"
+}

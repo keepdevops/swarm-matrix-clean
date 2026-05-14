@@ -1,0 +1,10 @@
+{
+  "agent_id": "portable_agent",
+  "name": "Portable HF Transformers Agent",
+  "backend_target": "transformers",
+  "max_context_tokens": 8192,
+  "temperature": 0.2,
+  "max_tokens": 1024,
+  "model_path": "/Users/Shared/models/hf/Qwen2.5-Coder-7B-Instruct",
+  "dtype": "bfloat16"
+}

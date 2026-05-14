@@ -1,0 +1,14 @@
+{
+  "agent_id": "developer_agent",
+  "name": "Core C++ Developer",
+  "backend_target": "llama_cpp_binary",
+  "max_context_tokens": 8192,
+  "temperature": 0.2,
+  "max_tokens": 1024,
+  "llama_server_path": "/Users/Shared/llama/llama-server",
+  "model_path": "/Users/Shared/models/gguf/codellama-7b.Q5_K_M.gguf",
+  "port": 8080,
+  "n_gpu_layers": 99,
+  "ubatch_size": 512,
+  "startup_timeout_s": 30.0
+}
