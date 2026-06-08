@@ -20,6 +20,7 @@ from backends.llama_python import LlamaCppPythonBackend
 from backends.mlx_engine import MLXBackend
 from backends.transformers_engine import TransformersBackend
 from backends.vllm_engine import VLLMBackend
+from orchestration.paths import resolve_paths
 
 logger = logging.getLogger(__name__)
 
@@ -52,21 +53,29 @@ class BackendManager:
         """Register an additional backend at runtime."""
         cls._registry[key] = backend_cls
 
+    @staticmethod
+    def _cache_key(agent_config: dict[str, Any]) -> str:
+        """LRU key. Includes model_path so two agents sharing a backend class
+        but pointing at different weights get distinct resident instances."""
+        return f"{agent_config.get('backend_target')}::{agent_config.get('model_path', '')}"
+
     async def acquire(self, agent_config: dict[str, Any]) -> InferenceBackend:
         """Return an initialized backend for the given agent config.
 
-        Reuses a live backend if `backend_target` already resident; otherwise
-        evicts LRU entries until under `max_resident` and constructs a new one.
-        Raises on unknown target or init failure (fail loudly).
+        Reuses a live backend if the same (backend_target, model_path) is
+        already resident; otherwise evicts LRU entries until under
+        `max_resident` and constructs a new one. Raises on unknown target
+        or init failure (fail loudly).
         """
         target = agent_config.get("backend_target")
         if not target:
             raise ValueError("agent_config missing 'backend_target'")
+        key = self._cache_key(agent_config)
 
         async with self._lock:
-            if target in self._active:
-                self._active.move_to_end(target)
-                return self._active[target]
+            if key in self._active:
+                self._active.move_to_end(key)
+                return self._active[key]
 
             while len(self._active) >= self._max:
                 victim_key, victim = self._active.popitem(last=False)
@@ -86,8 +95,8 @@ class BackendManager:
             ok = await backend.initialize(agent_config)
             if not ok:
                 raise RuntimeError(f"backend {target!r} failed to initialize")
-            self._active[target] = backend
-            logger.info("backend %s resident (active=%d)", target, len(self._active))
+            self._active[key] = backend
+            logger.info("backend %s resident (active=%d)", key, len(self._active))
             return backend
 
     async def release_all(self) -> None:
@@ -105,13 +114,18 @@ class BackendManager:
 
 
 def load_agent_config(path: str | Path) -> dict[str, Any]:
-    """Load and JSON-parse an agent config file. Validation happens in the backend."""
+    """Load, JSON-parse, and path-resolve an agent config file.
+
+    Model/binary paths are resolved against env-configurable base dirs (see
+    `orchestration.paths`); deeper validation happens in the backend.
+    """
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(f"agent config not found: {p}")
     try:
         with p.open("r", encoding="utf-8") as f:
-            return json.load(f)
+            cfg = json.load(f)
     except json.JSONDecodeError:
         logger.error("invalid JSON in %s", p, exc_info=True)
         raise
+    return resolve_paths(cfg)

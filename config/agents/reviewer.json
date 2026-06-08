@@ -5,5 +5,5 @@
   "max_context_tokens": 8192,
   "temperature": 0.2,
   "max_tokens": 1024,
-  "model_path": "/Users/Shared/models/mlx/qwen2.5-coder-7b-4bit"
+  "model_path": "mlx/qwen2.5-coder-7b-4bit"
 }

@@ -66,8 +66,21 @@ pip install exllamav2           # backends/exllamav2_engine.py (CUDA/ROCm)
 pip install transformers torch  # backends/transformers_engine.py
 ```
 
-`backends/llama_cpp.py` only needs a built `llama-server` binary — point at it
-via the agent config's `llama_server_path`.
+`backends/llama_cpp.py` only needs a built `llama-server` binary. Its location
+defaults to `MATRIX_SAFE_LLAMA_SERVER` (or `/Users/Shared/llama/llama-server`);
+override per-agent with `llama_server_path`.
+
+### Model paths
+
+Agent configs store `model_path` **relative to a base directory** so no
+machine-specific absolute path is committed. Relative paths resolve against
+`MATRIX_SAFE_MODELS_DIR` (default `/Users/Shared/llama/models`); an absolute
+`model_path` is still honored as an escape hatch. A relative path that doesn't
+resolve to an existing file fails loudly at config load.
+
+```bash
+export MATRIX_SAFE_MODELS_DIR=/path/to/models   # defaults to /Users/Shared/llama/models
+```
 
 ## Quick start
 
@@ -93,8 +106,7 @@ Switching engines is a one-field edit:
 // config/agents/developer.json
 {
   "backend_target": "llama_cpp_binary",           // ← change this
-  "model_path": "/Users/Shared/models/gguf/codellama-7b.Q5_K_M.gguf",
-  "llama_server_path": "/Users/Shared/llama/llama-server",
+  "model_path": "GGUF/codellama-7b.Q5_K_M.gguf",  // relative to MATRIX_SAFE_MODELS_DIR
   "max_context_tokens": 8192
 }
 ```

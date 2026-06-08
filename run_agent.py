@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from orchestration.manager import BackendManager, load_agent_config
+from orchestration.paths import resolve_paths
 
 
 def _configure_logging(verbosity: int) -> None:
@@ -58,6 +59,10 @@ def _merge_overrides(cfg: dict[str, Any], args: argparse.Namespace) -> dict[str,
         cfg["model_path"] = args.model_path
     if args.backend is not None:
         cfg["backend_target"] = args.backend
+    if args.model_path is not None or args.backend is not None:
+        # Re-resolve so a relative --model-path / changed backend gets the same
+        # base-dir treatment as values loaded from the config file.
+        cfg = resolve_paths(cfg)
     return cfg
 
 

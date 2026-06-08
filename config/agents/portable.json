@@ -5,6 +5,6 @@
   "max_context_tokens": 8192,
   "temperature": 0.2,
   "max_tokens": 1024,
-  "model_path": "/Users/Shared/models/hf/Qwen2.5-Coder-7B-Instruct",
+  "model_path": "hf/Qwen2.5-Coder-7B-Instruct",
   "dtype": "bfloat16"
 }

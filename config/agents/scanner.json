@@ -5,7 +5,7 @@
   "max_context_tokens": 16384,
   "temperature": 0.1,
   "max_tokens": 2048,
-  "model_path": "/Users/Shared/models/hf/Qwen2.5-Coder-14B-Instruct",
+  "model_path": "hf/Qwen2.5-Coder-14B-Instruct",
   "served_model_name": "qwen2.5-coder-14b",
   "port": 8000,
   "tensor_parallel_size": 1,

@@ -15,7 +15,7 @@ async def test_acquire_initializes_backend(fake_registry):
     mgr = fake_registry(max_resident=1)
     backend = await mgr.acquire({"backend_target": "fake"})
     assert backend.initialized
-    assert mgr.resident() == ["fake"]
+    assert mgr.resident() == ["fake::"]
     await mgr.release_all()
     assert backend.shutdown_called
 
@@ -57,7 +57,7 @@ async def test_lru_evicts_when_over_capacity(fake_registry):
     b = await mgr.acquire({"backend_target": "fake_slow"})
     assert a.shutdown_called  # evicted
     assert b.initialized
-    assert mgr.resident() == ["fake_slow"]
+    assert mgr.resident() == ["fake_slow::"]
     await mgr.release_all()
 
 
@@ -67,7 +67,28 @@ async def test_max_resident_two_keeps_both(fake_registry):
     a = await mgr.acquire({"backend_target": "fake"})
     await mgr.acquire({"backend_target": "fake_slow"})
     assert not a.shutdown_called
-    assert mgr.resident() == ["fake", "fake_slow"]
+    assert mgr.resident() == ["fake::", "fake_slow::"]
+    await mgr.release_all()
+
+
+@pytest.mark.asyncio
+async def test_different_model_paths_get_distinct_instances(fake_registry):
+    """Regression: two configs sharing a backend_target but pointing at
+    different model_paths must NOT share the same resident backend."""
+    mgr = fake_registry(max_resident=2)
+    a = await mgr.acquire({"backend_target": "fake", "model_path": "/m/a.gguf"})
+    b = await mgr.acquire({"backend_target": "fake", "model_path": "/m/b.gguf"})
+    assert a is not b
+    assert sorted(mgr.resident()) == ["fake::/m/a.gguf", "fake::/m/b.gguf"]
+    await mgr.release_all()
+
+
+@pytest.mark.asyncio
+async def test_same_model_path_reuses_instance(fake_registry):
+    mgr = fake_registry(max_resident=2)
+    a = await mgr.acquire({"backend_target": "fake", "model_path": "/m/x.gguf"})
+    b = await mgr.acquire({"backend_target": "fake", "model_path": "/m/x.gguf"})
+    assert a is b
     await mgr.release_all()
 
 
