@@ -1,0 +1,14 @@
+{
+  "agent_id": "local_coder_14b_agent",
+  "name": "Local Qwen2.5-14B (GGUF, richer)",
+  "backend_target": "llama_cpp_binary",
+  "max_context_tokens": 8192,
+  "temperature": 0.3,
+  "max_tokens": 1024,
+  "llama_server_path": "/Users/Shared/llama/llama.cpp-master/build/bin/llama-server",
+  "model_path": "large/Qwen2.5-14B-Instruct-Q4_K_M.gguf",
+  "port": 8092,
+  "n_gpu_layers": 99,
+  "ubatch_size": 512,
+  "startup_timeout_s": 90.0
+}
