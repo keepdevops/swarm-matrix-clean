@@ -9,6 +9,9 @@ cd "$ROOT"
 
 BACKEND_PORT="${BACKEND_PORT:-8765}"
 FRONTEND_PORT="${FRONTEND_PORT:-5173}"
+# Must match matrix-2-launch.sh, or this script checks deps in one interpreter
+# while the launcher starts the server in another.
+PYTHON="${PYTHON:-python3}"
 
 # ANSI without hardcoded values per global "design tokens" spirit.
 C_RED=$'\033[31m'; C_GRN=$'\033[32m'; C_YEL=$'\033[33m'; C_RST=$'\033[0m'
@@ -28,7 +31,7 @@ probe_version() {
     *)    "$1" --version 2>&1 | head -1 ;;
   esac
 }
-for bin in python3 node npm curl lsof; do
+for bin in "$PYTHON" node npm curl lsof; do
   if command -v "$bin" >/dev/null 2>&1; then
     ok "$bin ($(probe_version "$bin"))"
   else
@@ -38,7 +41,7 @@ done
 
 # -------- 2. Python deps --------
 section "Python deps"
-python3 - <<'PY'
+"$PYTHON" - <<'PY'
 import importlib, sys
 required = ["fastapi", "uvicorn", "httpx", "pydantic"]
 missing = []
@@ -72,9 +75,9 @@ else
   for cfg in "$ROOT"/config/agents/*.json; do
     [ -e "$cfg" ] || continue
     name="$(basename "$cfg")"
-    if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$cfg" 2>/dev/null; then
+    if "$PYTHON" -c "import json,sys; json.load(open(sys.argv[1]))" "$cfg" 2>/dev/null; then
       # validate referenced paths
-      msg=$(python3 - "$cfg" <<'PY'
+      msg=$("$PYTHON" - "$cfg" <<'PY'
 import json, sys, pathlib
 cfg = json.load(open(sys.argv[1]))
 problems = []

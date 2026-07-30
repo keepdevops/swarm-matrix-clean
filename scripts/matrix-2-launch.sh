@@ -9,6 +9,9 @@ cd "$ROOT"
 
 BACKEND_PORT="${BACKEND_PORT:-8765}"
 FRONTEND_PORT="${FRONTEND_PORT:-5173}"
+# Pin the interpreter: `python3` on PATH is whatever env happens to be active,
+# which is rarely the one holding this project's deps. Override with PYTHON=…
+PYTHON="${PYTHON:-python3}"
 RUNDIR="$ROOT/.matrix"
 mkdir -p "$RUNDIR"
 
@@ -36,6 +39,22 @@ if is_alive "$FRONTEND_PID"; then
   die "frontend already running (pid $(cat $FRONTEND_PID)). Run matrix-3-shutdown.sh first."
 fi
 
+# Preflight the interpreter so a missing dep is a one-line message, not a
+# traceback buried in the log after a 20s health-check timeout.
+command -v "$PYTHON" >/dev/null 2>&1 || die "PYTHON='$PYTHON' not found on PATH."
+if ! missing="$("$PYTHON" - <<'PY'
+import importlib.util, sys
+need = {"fastapi": "fastapi", "uvicorn": "uvicorn", "pydantic": "pydantic", "httpx": "httpx"}
+print(" ".join(p for m, p in need.items() if importlib.util.find_spec(m) is None))
+PY
+)"; then
+  die "$PYTHON failed to run — check the interpreter at $(command -v "$PYTHON")."
+fi
+if [ -n "$missing" ]; then
+  die "$(printf '%s is missing: %s\n  Install with: %s -m pip install -r requirements.txt\n  Or point at another env: PYTHON=/path/to/python3 %s' \
+      "$(command -v "$PYTHON")" "$missing" "$PYTHON" "$0")"
+fi
+
 # Refuse if ports are taken by anything else.
 for port in "$BACKEND_PORT" "$FRONTEND_PORT"; do
   if lsof -iTCP:"$port" -sTCP:LISTEN -P -n 2>/dev/null | grep -q LISTEN; then
@@ -46,7 +65,7 @@ done
 # ---- Start backend ----
 say "starting FastAPI server on :$BACKEND_PORT (log: $BACKEND_LOG)"
 PORT="$BACKEND_PORT" LOG_LEVEL="${LOG_LEVEL:-INFO}" \
-  nohup python3 -m server >"$BACKEND_LOG" 2>&1 &
+  nohup "$PYTHON" -m server >"$BACKEND_LOG" 2>&1 </dev/null &
 echo "$!" > "$BACKEND_PID"
 
 # Wait for /api/health.
@@ -69,13 +88,21 @@ fi
 
 # ---- Start frontend ----
 say "starting Vite dev server on :$FRONTEND_PORT (log: $FRONTEND_LOG)"
-( cd "$ROOT/frontend" && nohup npm run dev -- --port "$FRONTEND_PORT" \
-    >"$FRONTEND_LOG" 2>&1 & echo "$!" > "$FRONTEND_PID" )
+# Background `npm` itself rather than a `( cd … && npm ) &` wrapper: the wrapper
+# subshell made $! the shell's pid instead of npm's, and it inherited our stdout,
+# so `matrix-2-launch.sh | tee` hung forever waiting on a pipe nobody closed.
+cd "$ROOT/frontend"
+nohup npm run dev -- --port "$FRONTEND_PORT" >"$FRONTEND_LOG" 2>&1 </dev/null &
+echo "$!" > "$FRONTEND_PID"
+cd "$ROOT"
 
-# Wait for Vite to bind the port.
+# Wait for Vite to bind the port. Probe `localhost`, not 127.0.0.1: Vite's
+# default host resolves to IPv6 [::1], so an IPv4-only probe never connects
+# even though the dev server is up and serving.
+FRONTEND_URL="http://localhost:$FRONTEND_PORT/"
 say "waiting for frontend…"
 for i in $(seq 1 40); do
-  if curl -sf "http://127.0.0.1:$FRONTEND_PORT/" >/dev/null 2>&1; then
+  if curl -sf "$FRONTEND_URL" >/dev/null 2>&1; then
     say "${C_GRN}frontend ready${C_RST} (pid $(cat $FRONTEND_PID))"
     break
   fi
@@ -85,6 +112,12 @@ for i in $(seq 1 40); do
   fi
   sleep 0.5
 done
+# Mirror the backend's post-loop guard: without it, a frontend that never binds
+# still falls through to "stack is up" — a silent failure.
+if ! curl -sf "$FRONTEND_URL" >/dev/null 2>&1; then
+  tail -20 "$FRONTEND_LOG" >&2
+  die "frontend never responded on $FRONTEND_URL — see $FRONTEND_LOG"
+fi
 
 echo
 say "stack is up:"
