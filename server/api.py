@@ -18,6 +18,22 @@ logger = logging.getLogger(__name__)
 AGENTS_DIR = Path(__file__).resolve().parents[1] / "config" / "agents"
 
 
+def _config_error_detail(agent: str, exc: Exception) -> str:
+    """Build a 400 detail that names *why* an agent config was rejected.
+
+    Includes the underlying message (and therefore local filesystem paths) so a
+    bad config is diagnosable from the client. Safe here because the API binds
+    to localhost; revisit if this server is ever exposed beyond the machine.
+    """
+    if isinstance(exc, json.JSONDecodeError):
+        kind = "is not valid JSON"
+    elif isinstance(exc, FileNotFoundError):
+        kind = "references a missing file"
+    else:
+        kind = "could not be loaded"
+    return f"agent config {agent} {kind}: {exc}"
+
+
 class GenerateRequest(BaseModel):
     agent: str = Field(..., description="Agent config filename (e.g. 'developer.json').")
     prompt: str = Field("", description="Prompt text from the editor.")
@@ -71,9 +87,9 @@ def create_app() -> FastAPI:
             raise HTTPException(404, f"agent config not found: {req.agent}")
         try:
             cfg = load_agent_config(cfg_path)
-        except Exception:
-            logger.error("agent config load failed", exc_info=True)
-            raise HTTPException(400, "agent config invalid")
+        except Exception as exc:
+            logger.error("agent config load failed: %s", cfg_path, exc_info=True)
+            raise HTTPException(400, _config_error_detail(req.agent, exc)) from exc
 
         if req.temperature is not None:
             cfg["temperature"] = req.temperature

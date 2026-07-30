@@ -7,6 +7,7 @@ tokenizer files. Point `model_path` at that directory.
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import logging
 import threading
 from collections.abc import AsyncGenerator
@@ -17,6 +18,11 @@ from backends.base import BackendConfig, InferenceBackend
 logger = logging.getLogger(__name__)
 
 _SENTINEL_DONE: dict[str, Any] = {"__done__": True}
+
+# How often a blocked worker re-checks stop_flag while handing off a chunk.
+_EMIT_POLL_SECONDS = 0.1
+# How long a signalled worker gets to unwind before we call the thread wedged.
+_WORKER_EXIT_GRACE_SECONDS = 5.0
 
 
 class MLXBackend(InferenceBackend):
@@ -30,6 +36,14 @@ class MLXBackend(InferenceBackend):
         self._stream_generate: Any | None = None
         self._cfg: BackendConfig | None = None
         self._gen_lock = asyncio.Lock()
+        # MLX's default GPU stream is thread-local, so the model load and every
+        # generation must run on the SAME thread. A single-worker executor pins
+        # all MLX work to one thread; otherwise generation on a fresh thread
+        # raises "There is no Stream(gpu, N) in current thread".
+        self._executor: concurrent.futures.ThreadPoolExecutor | None = None
+        # Set if a worker never returned. The pinned thread owns the model, so
+        # there is nothing to restart it with — later calls fail fast instead.
+        self._wedged = False
 
     async def initialize(self, config: dict[str, Any]) -> bool:
         try:
@@ -51,10 +65,28 @@ class MLXBackend(InferenceBackend):
             )
             return False
 
+        self._executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="mlx"
+        )
+
+        def _load_on_pinned() -> tuple[Any, Any]:
+            # Establish this thread's default GPU stream, then load the model on
+            # it so generation (also on this thread) shares the same stream.
+            try:
+                import mlx.core as mx
+
+                mx.set_default_device(mx.gpu)
+            except Exception:
+                logger.error("could not set MLX default device", exc_info=True)
+            return load(cfg.model_path)
+
+        loop = asyncio.get_running_loop()
         try:
-            model, tokenizer = await asyncio.to_thread(load, cfg.model_path)
+            model, tokenizer = await loop.run_in_executor(self._executor, _load_on_pinned)
         except Exception:
             logger.error("mlx_lm.load failed for %s", cfg.model_path, exc_info=True)
+            self._executor.shutdown(wait=False)
+            self._executor = None
             return False
 
         self.model = model
@@ -67,8 +99,19 @@ class MLXBackend(InferenceBackend):
     async def generate_stream(
         self, payload: dict[str, Any]
     ) -> AsyncGenerator[dict[str, Any], None]:
-        if self.model is None or self.tokenizer is None or self._cfg is None:
+        if (
+            self.model is None
+            or self.tokenizer is None
+            or self._cfg is None
+            or self._executor is None
+        ):
             yield {"error": "backend not initialized"}
+            return
+
+        if self._wedged:
+            # A previous worker never came back and still holds the executor's
+            # only slot, so a new one would queue behind it and hang forever.
+            yield {"error": "MLX worker thread is wedged; restart the backend"}
             return
 
         cfg = self._cfg
@@ -83,6 +126,28 @@ class MLXBackend(InferenceBackend):
         stream_generate = self._stream_generate
         model = self.model
         tokenizer = self.tokenizer
+
+        def emit(item: dict[str, Any]) -> bool:
+            """Hand one chunk to the event loop. False means stop generating.
+
+            Never waits indefinitely. A plain `.result()` here is what wedged the
+            backend: with a full queue and a consumer that had stopped draining,
+            the pinned thread parked forever, and because the executor has a
+            single worker, every later generation queued behind it and hung too.
+            Polling lets a blocked worker notice stop_flag and unwind.
+            """
+            put = asyncio.run_coroutine_threadsafe(queue.put(item), loop)
+            while True:
+                try:
+                    put.result(timeout=_EMIT_POLL_SECONDS)
+                    return True
+                except concurrent.futures.TimeoutError:
+                    if stop_flag.is_set():
+                        put.cancel()
+                        return False
+                except Exception:
+                    logger.error("could not hand MLX chunk to event loop", exc_info=True)
+                    return False
 
         def worker() -> None:
             try:
@@ -122,8 +187,9 @@ class MLXBackend(InferenceBackend):
                 asyncio.run_coroutine_threadsafe(queue.put(_SENTINEL_DONE), loop)
 
         async with self._gen_lock:
-            thread = threading.Thread(target=worker, daemon=True, name="mlx-gen")
-            thread.start()
+            # Run on the pinned single-thread executor (same thread as load) so
+            # MLX's thread-local GPU stream is valid for generation.
+            future = loop.run_in_executor(self._executor, worker)
             try:
                 while True:
                     item = await queue.get()
@@ -136,13 +202,19 @@ class MLXBackend(InferenceBackend):
                 raise
             finally:
                 stop_flag.set()
-                await asyncio.to_thread(thread.join, 5.0)
-                if thread.is_alive():
-                    logger.error("MLX worker did not exit within 5s")
+                try:
+                    await asyncio.wait_for(asyncio.shield(future), timeout=5.0)
+                except asyncio.TimeoutError:
+                    logger.error("MLX worker did not finish within 5s")
+                except Exception:
+                    logger.error("MLX worker errored on shutdown", exc_info=True)
 
     async def shutdown(self) -> bool:
         self.model = None
         self.tokenizer = None
         self._stream_generate = None
+        if self._executor is not None:
+            self._executor.shutdown(wait=False)
+            self._executor = None
         logger.info("MLX backend shut down")
         return True

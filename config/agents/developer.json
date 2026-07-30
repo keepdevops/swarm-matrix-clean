@@ -6,7 +6,7 @@
   "temperature": 0.2,
   "max_tokens": 1024,
   "llama_server_path": "/Users/Shared/llama/llama-server",
-  "model_path": "/Users/Shared/llama/models/GGUF/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+  "model_path": "medium/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
   "port": 8090,
   "n_gpu_layers": 99,
   "ubatch_size": 512,

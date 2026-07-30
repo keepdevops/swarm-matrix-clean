@@ -1,9 +1,14 @@
 {
   "agent_id": "reviewer_agent",
-  "name": "Fast MLX Reviewer",
-  "backend_target": "mlx",
+  "name": "Qwen2.5-Coder-7B Reviewer (GGUF)",
+  "backend_target": "llama_cpp_binary",
   "max_context_tokens": 8192,
   "temperature": 0.2,
   "max_tokens": 1024,
-  "model_path": "mlx/qwen2.5-coder-7b-4bit"
+  "llama_server_path": "/Users/Shared/llama/llama.cpp-master/build/bin/llama-server",
+  "model_path": "medium/qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+  "port": 8093,
+  "n_gpu_layers": 99,
+  "ubatch_size": 512,
+  "startup_timeout_s": 60.0
 }
