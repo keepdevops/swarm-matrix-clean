@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import socket
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -38,6 +39,19 @@ class LlamaCppServerBackend(InferenceBackend):
             logger.error(
                 "llama_server_path and model_path are required (got %r, %r)",
                 cfg.llama_server_path,
+                cfg.model_path,
+            )
+            return False
+
+        # Preflight the port. llama-server only discovers a collision ~1s in,
+        # long after our /health probe has already been answered 200 by
+        # whoever already owns the port — so a post-spawn check cannot win
+        # that race. Refuse up front, like scripts/matrix-2-launch.sh does.
+        if not self._port_available(cfg.port):
+            logger.error(
+                "port %d is already in use — refusing to start llama-server for %s. "
+                "Another server owns that port and would silently answer our requests.",
+                cfg.port,
                 cfg.model_path,
             )
             return False
@@ -86,6 +100,16 @@ class LlamaCppServerBackend(InferenceBackend):
         logger.info("llama.cpp server online at %s", self.base_url)
         return True
 
+    @staticmethod
+    def _port_available(port: int) -> bool:
+        """True if nothing is listening on 127.0.0.1:port."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("127.0.0.1", port))
+            except OSError:
+                return False
+        return True
+
     async def _drain(self, stream: asyncio.StreamReader | None, level: int) -> None:
         if stream is None:
             return
@@ -110,6 +134,18 @@ class LlamaCppServerBackend(InferenceBackend):
             try:
                 r = await self.client.get("/health", timeout=2.0)
                 if r.status_code == 200:
+                    # A 200 proves *something* owns the port, not that it is
+                    # ours. If our process died (lost the bind race to another
+                    # server already on this port), the probe is answering from
+                    # a stranger — whose model may not even do completions.
+                    if self.process is not None and self.process.returncode is not None:
+                        logger.error(
+                            "health probe on %s returned 200 but our llama-server "
+                            "exited rc=%s — port is owned by another process",
+                            self.base_url,
+                            self.process.returncode,
+                        )
+                        return False
                     return True
                 logger.warning("health probe non-200: %s", r.status_code)
             except httpx.RequestError:
