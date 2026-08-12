@@ -1,0 +1,9 @@
+{
+  "agent_id": "docker_coder_14b",
+  "name": "Docker Qwen2.5-14B (llama_cpp_python, CPU)",
+  "backend_target": "llama_cpp_python",
+  "max_context_tokens": 4096,
+  "temperature": 0.3,
+  "max_tokens": 1024,
+  "model_path": "large/Qwen2.5-14B-Instruct-Q4_K_M.gguf"
+}

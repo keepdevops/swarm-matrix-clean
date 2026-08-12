@@ -1,0 +1,9 @@
+{
+  "agent_id": "docker_gemma2b",
+  "name": "Docker gemma-2-2b (llama_cpp_python, CPU)",
+  "backend_target": "llama_cpp_python",
+  "max_context_tokens": 4096,
+  "temperature": 0.2,
+  "max_tokens": 512,
+  "model_path": "small/gemma-2-2b-it-Q4_K_M.gguf"
+}
