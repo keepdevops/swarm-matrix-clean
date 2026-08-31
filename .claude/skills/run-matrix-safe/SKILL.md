@@ -128,15 +128,18 @@ gated on `MATRIX_SAFE_GGUF_PATH` etc. — see the README table.
   `acquire failed: backend 'llama_cpp_python' failed to initialize` — the
   `llama-cpp-python` package is installed in neither interpreter. `vllm` /
   `exllamav2` need CUDA and cannot run here at all.
-- **The shutdown script's llama-server sweep is dead code.** It runs
-  `pgrep -f "/Users/Shared/llama/llama-server"`, which matches **zero**
-  processes: that path is a symlink, and the spawned process's argv[0] is the
-  resolved `/Users/Shared/llama/llama.cpp-master/build/bin/llama-server`.
-  Teardown still works — FastAPI's `shutdown` hook reaps the child (verified:
-  the spawned pid was gone 2 s after shutdown) — but the belt-and-suspenders
-  net catches nothing. Note before "fixing" it: a pattern that *did* match would
-  also kill the unrelated **cofiswarm** stack's five long-running
-  `llama-server` processes on ports 8083–8090.
+- **Engine cleanup keys off the port range, never the binary path.**
+  `BackendConfig.port` is schema-bounded to **9000–9090** (`backends/base.py:27`),
+  so every engine subprocess matrix-safe spawns — `llama-server` *and* vLLM —
+  listens in that range. `matrix-3-shutdown.sh` relies on that: it snapshots the
+  backend's children before killing it, then sweeps 9002–9090 for orphans left by
+  a previous crash, killing only processes that are *both* in range and actually
+  an engine. Do not reintroduce path matching: `argv[0]` is whatever
+  `llama_server_path` was set to (a symlink on one machine, the resolved
+  `llama.cpp-master/build/bin/` path on another), which is exactly why the
+  original sweep matched nothing. The two-condition guard also keeps the sweep off
+  the unrelated **cofiswarm** stack's five `llama-server` processes on 8083–8090
+  and off any non-engine process that happens to hold a port in range.
 - **Vite binds IPv6.** Probe the frontend as `http://localhost:9001/`, never
   `http://127.0.0.1:9001/` — the IPv4 probe never connects even while the dev
   server serves fine. Both `matrix-1-check.sh` and `driver.mjs` already do this.
